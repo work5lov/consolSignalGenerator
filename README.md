@@ -1,0 +1,2 @@
+# consolSignalGenerator
+ Консольный генератор сигналов
