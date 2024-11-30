@@ -62,7 +62,7 @@ void writeToFileLE(std::ofstream& file, size_t num_samples, const std::vector<do
 
 int main() {
 
-    const double total_time = 30.0;
+    const double total_time = 10.0;
     const double fs_p = 50e6;
     const int total_elements = static_cast<int>(total_time * fs_p);  // Общее количество элементов
     const int num_threads = 5;  // Количество потоков
