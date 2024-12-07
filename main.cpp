@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip> // Для std::setprecision
 #include <random> // Для генерации случайных чисел
+#include <sstream>
 
 // Общий мьютекс для синхронизации вывода
 std::mutex mtx;
@@ -14,6 +15,25 @@ std::mutex mtx;
 void fill_vector_part(std::vector<double>& iteration_vec, int global_start, int local_start, int count, double fs) {
     for (int i = 0; i < count; ++i) {
         iteration_vec[local_start + i] = static_cast<double>(global_start + i) / fs;
+    }
+}
+
+// Функция для создания сигналов с шумами
+void generate_signal_part(std::vector<double>& iteration_vec, int local_start, int count,
+                          double signal_start, double signal_end, double fs, double amplitude, double frequency) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> noise_dist(-0.01, 0.01); // Шум
+
+    for (int i = 0; i < count; ++i) {
+        double time = iteration_vec[local_start + i]; // Получаем текущее время
+
+        // Генерация сигнала в пределах сигнального интервала
+        if (time >= signal_start && time <= signal_end) {
+            iteration_vec[local_start + i] = amplitude * sin(2 * M_PI * frequency * time) + noise_dist(gen);
+        } else {
+            iteration_vec[local_start + i] = noise_dist(gen); // Добавляем только шум
+        }
     }
 }
 
@@ -60,9 +80,70 @@ void writeToFileLE(std::ofstream& file, size_t num_samples, const std::vector<do
     }
 }
 
-int main() {
+std::string generateFileName() {
+    // Получаем текущее время
+    auto now = std::chrono::system_clock::now();
+    std::time_t time = std::chrono::system_clock::to_time_t(now);
 
-    const double total_time = 10.0;
+    // Преобразуем в локальное время
+    std::tm localTime;
+#ifdef _WIN32
+    localtime_s(&localTime, &time); // Windows
+#else
+    localtime_r(&time, &localTime); // Linux/Unix
+#endif
+
+    // Форматируем имя файла
+    std::ostringstream fileName;
+    fileName << std::put_time(&localTime, "%d-%m-%Y_%H-%M-%S");
+    return fileName.str();
+}
+
+int main(int argc, char* argv[]) {
+
+    // Значения по умолчанию
+    double total_time = 5.0;
+    double signal_start = 1.0;
+    double signal_end = 2.0;
+
+    // Проверяем наличие аргументов командной строки
+    if (argc >= 2) {
+        try {
+            total_time = std::stod(argv[1]); // Первый аргумент - total_time
+        } catch (const std::exception& e) {
+            std::cerr << "Invalid total_time argument. Using default value: " << total_time << std::endl;
+        }
+    }
+    if (argc >= 3) {
+        try {
+            signal_start = std::stod(argv[2]); // Второй аргумент - signal_start
+        } catch (const std::exception& e) {
+            std::cerr << "Invalid signal_start argument. Using default value: " << signal_start << std::endl;
+        }
+    }
+    if (argc >= 4) {
+        try {
+            signal_end = std::stod(argv[3]); // Третий аргумент - signal_end
+        } catch (const std::exception& e) {
+            std::cerr << "Invalid signal_end argument. Using default value: " << signal_end << std::endl;
+        }
+    }
+
+    double amplitude = 1.0;
+    double frequency = 1000.0;
+
+    if (argc >= 5) amplitude = std::stod(argv[4]);
+    if (argc >= 6) frequency = std::stod(argv[5]);
+
+    std::cout << "Amplitude: " << amplitude << ", Frequency: " << frequency << " Hz" << std::endl;
+
+    // Вывод параметров для проверки
+    std::cout << "Parameters:" << std::endl;
+    std::cout << "Total Time: " << total_time << " seconds" << std::endl;
+    std::cout << "Signal Start: " << signal_start << " seconds" << std::endl;
+    std::cout << "Signal End: " << signal_end << " seconds" << std::endl;
+
+    // const double total_time = 5.0;
     const double fs_p = 50e6;
     const int total_elements = static_cast<int>(total_time * fs_p);  // Общее количество элементов
     const int num_threads = 5;  // Количество потоков
@@ -70,29 +151,14 @@ int main() {
     const double elements_per_thread = elements_per_iteration / num_threads;  // Количество элементов на поток
     const int bar_width = 20;  // Ширина прогресс-бара
 
-    // Определяем границы полезного сигнала
-    double signal_start = 1; // Начало полезного сигнала (пример)
-    double signal_end = 5;   // Конец полезного сигнала (пример)
-
     // Открываем файл для записи
-    std::string filename  = "generated_data_" + std::to_string(total_time) + "s.bin";
+    std::string fileDate = generateFileName();
+    std::string filename  = fileDate + ".bin";
     std::ofstream output_file(filename, std::ios::binary | std::ios::app);
     if (!output_file.is_open()) {
         std::cerr << "Error: Unable to open file for writing!" << std::endl;
         return 1;
     }
-
-//    std::ofstream output_file1("generated_data.txt", std::ios::out | std::ios::trunc);
-//    if (!output_file.is_open()) {
-//        std::cerr << "Error: Unable to open file for writing!" << std::endl;
-//        return 1;
-//    }
-
-//    std::ofstream output_file2("generated_dataNSTR.txt", std::ios::out | std::ios::trunc);
-//    if (!output_file.is_open()) {
-//        std::cerr << "Error: Unable to open file for writing!" << std::endl;
-//        return 1;
-//    }
 
     // Засекаем время перед началом обработки
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -118,14 +184,14 @@ int main() {
             t.join();
         }
 
-//        std::cout << iteration_vec.at(5) << " " << signal_start << " " << signal_end << std::endl;
-
         // Теперь умножаем элементы на 4 или 1000 с помощью потоков
         threads.clear(); // Очищаем вектор потоков для повторного использования
 
         for (int i = 0; i < num_threads; ++i) {
             int local_start_index = i * elements_per_thread;
-            threads.emplace_back(multiply_vector_part, std::ref(iteration_vec), local_start_index, elements_per_thread, signal_start, signal_end);
+            // threads.emplace_back(multiply_vector_part, std::ref(iteration_vec), local_start_index, elements_per_thread, signal_start, signal_end);
+            threads.emplace_back(generate_signal_part, std::ref(iteration_vec), local_start_index,
+                                 elements_per_thread, signal_start, signal_end, fs_p, 1.0, 1000.0); // Параметры сигнала
         }
 
         // Ждем завершения всех потоков
@@ -190,9 +256,6 @@ int main() {
 
     // Закрываем файл
     output_file.close();
-    // Закрываем файл
-//    output_file1.close();
-//    output_file2.close();
 
     return 0;
 }
