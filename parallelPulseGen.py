@@ -281,8 +281,8 @@ def generate_and_write_signal_pipeline(
 
 if __name__ == "__main__":
     fs = 50e6  # 50 МГц
-    total_duration = 5  # сек
-    start_time = 1  # сек
+    total_duration = 30  # сек
+    start_time = 10  # сек
     
     # Генерация параметров сигнала
     polez_signal = signal_Gen(fs, 800e-6, 1, 10)
