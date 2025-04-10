@@ -308,6 +308,6 @@ if __name__ == "__main__":
         low=-0.01,
         high=0.01,
         block_size=0.5,
-        chunk_duration=0.001  # Размер чанка для обработки (сек)
+        chunk_duration=0.1  # Размер чанка для обработки (сек)
     )
     print(f"\nВремя выполнения: {time.time() - start:.2f} сек")
