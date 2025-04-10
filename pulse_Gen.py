@@ -2,7 +2,9 @@ import numpy as np
 import struct
 import random
 import datetime
-import time
+from multiprocessing import Pool, cpu_count
+from time import time
+from tqdm import tqdm  # Импортируем tqdm для отображения прогресса
 
 def signal_Gen(fs, period, Amp, step):
     out = {}
@@ -24,57 +26,97 @@ def signal_Gen(fs, period, Amp, step):
     print(timestamp)
     return out
 
+def generate_signal_chunk(args):
+    """
+    Генерирует часть сигнала для заданного диапазона индексов.
+    """
+    start_idx, end_idx, t_vect, a_vect, pulse_duration_in_samples, fs = args
+    chunk_signal = np.zeros(end_idx - start_idx)
+    
+    for i in range(start_idx, end_idx):
+        idx_local = i - start_idx  # Локальный индекс внутри части
+        for j in range(len(t_vect)):
+            indices1 = int(t_vect[j] * fs)
+            
+            # Rising edge
+            if indices1 <= i < int(indices1 + 0.2 * pulse_duration_in_samples):
+                x1 = indices1
+                y1 = 0
+                x2 = int(indices1 + 0.2 * pulse_duration_in_samples)
+                y2 = a_vect[j]
+                slope = (y2 - y1) / (x2 - x1)
+                intercept = y1 - slope * x1
+                chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
+            
+            # Falling edge
+            elif int(indices1 + 0.8 * pulse_duration_in_samples) <= i < int(indices1 + pulse_duration_in_samples):
+                x1 = indices1 + 0.8 * pulse_duration_in_samples
+                y1 = a_vect[j]
+                x2 = int(indices1 + pulse_duration_in_samples)
+                y2 = 0
+                slope = (y2 - y1) / (x2 - x1)
+                intercept = y1 - slope * x1
+                chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
+            
+            # Steady state
+            elif int(indices1 + 0.2 * pulse_duration_in_samples) <= i < int(indices1 + 0.8 * pulse_duration_in_samples):
+                chunk_signal[idx_local] = a_vect[j] + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
+            
+            # Noise outside pulses
+            else:
+                chunk_signal[idx_local] = random.uniform(-0.01, 0.01)
+    
+    return chunk_signal
+
+
 def generate_signal(signal, pulse_duration, fs):
+    """
+    Генерация сигнала с использованием нескольких процессов.
+    """
     t_vect = np.array([k for k in signal.keys()])
     a_vect = np.array([v for v in signal.values()])
-    # Calculate the indices of the signal corresponding to the start of each pulse
-    indices1 = (t_vect * fs).astype(int)
+    
     # Calculate the length of the signal array
     num_samples = int((t_vect[-1] + pulse_duration) * fs)
-
-    # Create an array of zeros for the signal
-    signal = np.zeros(num_samples)
 
     # Calculate the duration of the pulse in samples
     pulse_duration_in_samples = int(pulse_duration * fs)
 
-    # Loop over each sample in the signal
-    for i in range(num_samples):
-        # Loop over each pulse
-        for j in range(len(indices1)):
-            # Check if the sample is in the rising edge of the pulse
-            if indices1[j] <= i < int(indices1[j] + 0.2 * pulse_duration_in_samples):
-                # Calculate the slope and intercept of the rising edge
-                x1 = indices1[j]
-                y1 = 0
-                x2 = int(indices1[j] + 0.2 * pulse_duration_in_samples)
-                y2 = a_vect[j]
-                slope = (y2 - y1) / (x2 - x1)
-                intercept = y1 - slope * x1                
-                # Calculate the signal value for the current sample
-                signal[i] = slope * i + intercept+random.uniform(0.01*a_vect[j], 0.02*a_vect[j])                
-                
-            # Check if the sample is in the falling edge of the pulse
-            elif int(indices1[j] + 0.8 * pulse_duration_in_samples) <= i < int(indices1[j] + pulse_duration_in_samples):
-                # Calculate the slope and intercept of the falling edge
-                x1 = indices1[j] + 0.8 * pulse_duration_in_samples
-                y1 = a_vect[j]
-                x2 = int(indices1[j] + pulse_duration_in_samples)
-                y2 = 0
-                slope = (y2 - y1) / (x2 - x1)
-                intercept = y1 - slope * x1
+    print("Генерация сигнала...")
 
-                # Calculate the signal value for the current sample
-                signal[i] = slope * i + intercept+random.uniform(0.01*a_vect[j], 0.02*a_vect[j])                
-            # Check if the sample is in the steady state of the pulse
-            elif int(indices1[j] + 0.2 * pulse_duration_in_samples) <= i < int(indices1[j] + 0.8 * pulse_duration_in_samples):
-                # Set the signal value to the amplitude of the pulse
-                signal[i] = a_vect[j]+random.uniform(0.01*a_vect[j], 0.02*a_vect[j])                
-            # Set the signal value to zero for all other samples
-            elif signal[i] != 0:
-                continue
-            else:
-                signal[i] = random.uniform(-0.01, 0.01)                
+    # Determine the number of CPU cores
+    num_cores = cpu_count()
+    print(f"Используется {num_cores} ядер процессора.")
+
+    # First level: split data into 10 parts
+    first_level_parts = 10
+    first_level_chunk_size = num_samples // first_level_parts
+    first_level_chunks = []
+    for part_idx in range(first_level_parts):
+        start_idx = part_idx * first_level_chunk_size
+        end_idx = (part_idx + 1) * first_level_chunk_size if part_idx != first_level_parts - 1 else num_samples
+        first_level_chunks.append((start_idx, end_idx))
+
+    # Second level: further split each part into chunks for each core
+    chunks = []
+    for start_idx, end_idx in first_level_chunks:
+        second_level_chunk_size = (end_idx - start_idx) // num_cores
+        for core_idx in range(num_cores):
+            s_idx = start_idx + core_idx * second_level_chunk_size
+            e_idx = start_idx + (core_idx + 1) * second_level_chunk_size if core_idx != num_cores - 1 else end_idx
+            chunks.append((s_idx, e_idx, t_vect, a_vect, pulse_duration_in_samples, fs))
+
+    # Use multiprocessing Pool to process chunks in parallel
+    with Pool(processes=num_cores) as pool:
+        results = list(tqdm(pool.imap_unordered(generate_signal_chunk, chunks), total=len(chunks), desc="Прогресс генерации"))
+
+    # Combine all chunks into the final signal
+    signal = np.concatenate(results)
+
+    # Print the first and last elements of the generated signal
+    print(f"Первый элемент сигнала: {signal[0]}")
+    print(f"Последний элемент сигнала: {signal[-1]}")
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(timestamp)
     return signal
@@ -86,10 +128,9 @@ def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
     final_signal = np.zeros(num_samples)
     prefix = "signal_P"    
     suffix = "S.bin"
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    fileName = "{}{}{}{}".format(prefix, final_Len, suffix, timestamp)
-    progress_counter = 0
-    print(fileName)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    fileName = f"signal_{timestamp}.bin"
+    print(f"\n{fileName}")
     with open(fileName, 'wb') as f:    
         for i in range(num_samples):
             if start_sample <= i < end_sample:
@@ -124,24 +165,31 @@ def embed_data2(final_Len, signal, start_time, fs, lowRand, highRand):
             codes = adc_14bit(final_signal[i])
 
     return final_signal   
+
+if __name__ == "__main__":
+    # Защита от рекурсивного запуска процессов
+    from multiprocessing import freeze_support
+    freeze_support()
+
+    # Параметры сигнала
+    r_Time_start = random.uniform(0, 30)
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # print(timestamp)
+    # Частота дискретизации
+    fs = 50e6
+
+    polez_signal = signal_Gen(fs,800e-6,1,10)
+    # print(polez_signal)
+    signalG = generate_signal(polez_signal, 10*10e-6, fs)
+    def adc_14bit(voltage):
+        # Преобразование напряжения в код АЦП
+        code = int((voltage + 1) * 8191)
+        return code
     
-r_Time_start = random.uniform(0, 30)
-timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-print(timestamp)
-# Частота дискретизации
-fs = 50e6
+    dataG = embed_data(2,signalG,0,fs,-0.01,0.01)
 
-polez_signal = signal_Gen(fs,800e-6,1,10)
-print(polez_signal)
-signalG = generate_signal(polez_signal, 10*10e-6, fs)
-def adc_14bit(voltage):
-    # Преобразование напряжения в код АЦП
-    code = int((voltage + 1) * 8191)
-    return code
+    end_time = time()
+    time_taken = end_time - timestamp
+    time_delta = datetime.timedelta(seconds=time_taken)
+    print(f"Time taken: {time_delta}")
 
-dataG = embed_data(5,signalG,1,fs,-0.01,0.01)
-
-# end_time = time.time()
-# time_taken = end_time - timestamp
-# time_delta = datetime.timedelta(seconds=time_taken)
-# print(f"Time taken: {time_delta}")

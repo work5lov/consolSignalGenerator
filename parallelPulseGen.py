@@ -193,39 +193,40 @@ def generate_signal_chunk(params):
     """
     Генерирует часть сигнала для указанного временного диапазона
     """
-    (start_idx, end_idx, pulse_duration, fs, 
+    (start_sample, end_sample, start_idx, end_idx, pulse_duration, fs, 
      t_vect, a_vect, indices1, pulse_samples) = params
 
     chunk = np.zeros(end_idx - start_idx)
     
     for i in range(start_idx, end_idx):
         value = 0.0
-        for j in range(len(indices1)):
-            start = indices1[j]
-            if i < start or i >= start + pulse_samples:
-                continue
-                
-            rise_end = start + int(0.2 * pulse_samples)
-            fall_start = start + int(0.8 * pulse_samples)
-            end = start + pulse_samples
+        if start_sample <= i < end_sample:
+            for j in range(len(indices1)):
+                start = indices1[j]
+                if i < start or i >= start + pulse_samples:
+                    continue
+                    
+                rise_end = start + int(0.2 * pulse_samples)
+                fall_start = start + int(0.8 * pulse_samples)
+                end = start + pulse_samples
 
-            if i < rise_end:
-                x1, y1 = start, 0
-                x2, y2 = rise_end, a_vect[j]
-                slope = (y2 - y1)/(x2 - x1)
-                val = slope*(i - x1) + y1 + random.uniform(0.01*a_vect[j], 0.02*a_vect[j])
-            elif i >= fall_start:
-                x1, y1 = fall_start, a_vect[j]
-                x2, y2 = end, 0
-                slope = (y2 - y1)/(x2 - x1)
-                val = slope*(i - x1) + y1 + random.uniform(0.01*a_vect[j], 0.02*a_vect[j])
-            else:
-                val = a_vect[j] + random.uniform(0.01*a_vect[j], 0.02*a_vect[j])
-            
-            if val != 0:
-                value = val
+                if i < rise_end:
+                    x1, y1 = start, 0
+                    x2, y2 = rise_end, a_vect[j]
+                    slope = (y2 - y1)/(x2 - x1)
+                    val = slope*(i - x1) + y1 + random.uniform(0.01*a_vect[j], 0.02*a_vect[j])
+                elif i >= fall_start:
+                    x1, y1 = fall_start, a_vect[j]
+                    x2, y2 = end, 0
+                    slope = (y2 - y1)/(x2 - x1)
+                    val = slope*(i - x1) + y1 + random.uniform(0.01*a_vect[j], 0.02*a_vect[j])
+                else:
+                    val = a_vect[j] + random.uniform(0.01*a_vect[j], 0.02*a_vect[j])
                 
-        chunk[i - start_idx] = value if value != 0 else random.uniform(-0.01, 0.01)
+                if val != 0:
+                    value = val
+        else:
+            chunk[i - start_idx] = value if value != 0 else random.uniform(-0.01, 0.01)        
     
     return chunk
 
@@ -242,6 +243,8 @@ def generate_and_write_signal_pipeline(
     start_sample = int(start_time * fs)  # Начало сигнала в сэмплах
     end_sample = int((start_time + total_duration) * fs)  # Конец сигнала в сэмплах
     total_samples = end_sample - start_sample
+
+    # print("before cycle", start_sample, end_sample)
     
     # Размер чанка в сэмплах
     chunk_samples = int(chunk_duration * fs)
@@ -254,10 +257,12 @@ def generate_and_write_signal_pipeline(
                 # Определяем границы чанка
                 chunk_end = min(chunk_start + chunk_samples, total_samples)
                 current_chunk_size = chunk_end - chunk_start
+
+                # print("\ninside cycle",chunk_start, chunk_end, current_chunk_size)
                 
                 # Генерируем параметры для чанка
                 chunk_params = (
-                    chunk_start, chunk_end, pulse_duration, fs,
+                    start_sample, end_sample, chunk_start, chunk_end, pulse_duration, fs,
                     t_vect, a_vect, indices1, pulse_samples
                 )
                 
@@ -280,8 +285,8 @@ def generate_and_write_signal_pipeline(
 
 if __name__ == "__main__":
     fs = 50e6  # 50 МГц
-    total_duration = 30  # сек
-    start_time = 10  # сек
+    total_duration = 5  # сек
+    start_time = 1  # сек
     
     # Генерация параметров сигнала
     polez_signal = signal_Gen(fs, 800e-6, 1, 10)
