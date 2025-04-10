@@ -239,17 +239,16 @@ def generate_and_write_signal_pipeline(
     
     # Глобальные параметры
     pulse_samples = int(pulse_duration * fs)
-    start_sample = int(start_time * fs)
-    end_sample = int((start_time + total_duration) * fs)
+    start_sample = int(start_time * fs)  # Начало сигнала в сэмплах
+    end_sample = int((start_time + total_duration) * fs)  # Конец сигнала в сэмплах
     total_samples = end_sample - start_sample
     
     # Размер чанка в сэмплах
     chunk_samples = int(chunk_duration * fs)
     
     # Прогресс-бар
-    with tqdm(total=total_samples, desc="Генерация и запись", 
-             unit='sample', unit_scale=True) as pbar:
-        
+    with tqdm(total=total_samples // 2, desc="Генерация и запись", 
+              unit='sample', unit_scale=True) as pbar:
         with Pool(cpu_count()) as pool, open(filename, 'wb') as f:
             for chunk_start in range(0, total_samples, chunk_samples):
                 # Определяем границы чанка
@@ -270,14 +269,14 @@ def generate_and_write_signal_pipeline(
                 buffer = bytearray()
                 for value in chunk:
                     code = adc_14bit(value)
-                    buffer.extend(struct.pack('H', code)*2)
+                    buffer.extend(struct.pack('H', code) * 2)  # Запись дважды
                 
                 # Запись в файл
                 f.write(buffer)
                 f.flush()
                 
                 # Обновление прогресса
-                pbar.update(current_chunk_size)
+                pbar.update(current_chunk_size // 2)  # Делим на 2, так как данные дублируются
 
 if __name__ == "__main__":
     fs = 50e6  # 50 МГц
@@ -309,6 +308,6 @@ if __name__ == "__main__":
         low=-0.01,
         high=0.01,
         block_size=0.5,
-        chunk_duration=0.1  # Размер чанка для обработки (сек)
+        chunk_duration=0.001  # Размер чанка для обработки (сек)
     )
     print(f"\nВремя выполнения: {time.time() - start:.2f} сек")
