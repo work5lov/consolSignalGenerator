@@ -5,6 +5,7 @@ import datetime
 from multiprocessing import Pool, cpu_count
 from time import time
 from tqdm import tqdm  # Импортируем tqdm для отображения прогресса
+import matplotlib.pyplot as plt  # Для визуализации
 
 def signal_Gen(fs, period, Amp, step):
     out = {}
@@ -22,53 +23,46 @@ def signal_Gen(fs, period, Amp, step):
     x_vect = [i * ((period * step) / step) * 100 for i in range(c)]
     for i in range(len(x_vect)):
         out[x_vect[i]] = y_vect[i]
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(timestamp)
     print("Отсчеты сигнала:", out)
     return out
 
-def generate_signal_chunk(args):
+def visualize_signal_gen(time, signal, x_vect, y_vect):
     """
-    Генерирует часть сигнала для заданного диапазона индексов.
+    Визуализация сигнала, сгенерированного функцией signal_Gen.
     """
-    start_idx, end_idx, t_vect, a_vect, pulse_duration_in_samples, fs = args
-    chunk_signal = np.zeros(end_idx - start_idx)
+    # Построение графика полного сигнала
+    plt.figure(figsize=(12, 6))
+    plt.plot(time, signal, label="Полный сигнал", color="blue")
+    
+    # Отметка выбранных точек
+    plt.scatter(x_vect, y_vect, color="red", label="Выбранные точки", zorder=5)
+    
+    plt.title("Визуализация сигнала из signal_Gen")
+    plt.xlabel("Время (секунды)")
+    plt.ylabel("Амплитуда")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
 
-    indices1 = (t_vect * fs).astype(int)    
-    
-    for i in range(start_idx, end_idx):
-        idx_local = i - start_idx  # Локальный индекс внутри части
-        for j in range(len(indices1)):
-            # indices1 = int(t_vect[j] * fs)            
-            # Rising edge
-            if indices1[j] <= i < int(indices1[j] + 0.2 * pulse_duration_in_samples):
-                x1 = indices1[j]
-                y1 = 0
-                x2 = int(indices1[j] + 0.2 * pulse_duration_in_samples)
-                y2 = a_vect[j]
-                slope = (y2 - y1) / (x2 - x1)
-                intercept = y1 - slope * x1
-                chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
-            
-            # Falling edge
-            elif int(indices1[j] + 0.8 * pulse_duration_in_samples) <= i < int(indices1[j] + pulse_duration_in_samples):
-                x1 = indices1[j] + 0.8 * pulse_duration_in_samples
-                y1 = a_vect[j]
-                x2 = int(indices1[j] + pulse_duration_in_samples)
-                y2 = 0
-                slope = (y2 - y1) / (x2 - x1)
-                intercept = y1 - slope * x1
-                chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
-            
-            # Steady state
-            elif int(indices1[j] + 0.2 * pulse_duration_in_samples) <= i < int(indices1[j] + 0.8 * pulse_duration_in_samples):
-                chunk_signal[idx_local] = a_vect[j] + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
-            
-            # Noise outside pulses
-            else:
-                chunk_signal[idx_local] = random.uniform(-0.01, 0.01)
-    
-    return chunk_signal
+def visualize_chunk(chunk_signal, start_idx, end_idx, fs):
+    """
+    Визуализация части сигнала.
+    """
+    # Создаем массив времени для оси X
+    time_axis = np.arange(start_idx, end_idx) / fs
+
+    # Построение графика
+    plt.figure(figsize=(12, 6))
+    plt.plot(time_axis, chunk_signal, label="Часть сигнала", color="blue")
+    plt.title(f"Визуализация части сигнала [{start_idx}, {end_idx}]")
+    plt.xlabel("Время (секунды)")
+    plt.ylabel("Амплитуда")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
 
 
 def generate_signal(signal, pulse_duration, fs):
@@ -83,10 +77,11 @@ def generate_signal(signal, pulse_duration, fs):
 
     # Calculate the duration of the pulse in samples
     pulse_duration_in_samples = int(pulse_duration * fs)
-    # print("Длительность импульса в отсчетах:", pulse_duration_in_samples)
+    print(f"Длительность импульса в отсчетах: {pulse_duration_in_samples}")
 
+    # Convert time vector to sample indices
     indices1 = (t_vect * fs).astype(int)
-    print("Индексы:",indices1)
+    print(f"Индексы начала импульсов: {indices1}")
 
     print("Генерация сигнала...")
 
@@ -103,8 +98,6 @@ def generate_signal(signal, pulse_duration, fs):
         end_idx = (part_idx + 1) * first_level_chunk_size if part_idx != first_level_parts - 1 else num_samples
         first_level_chunks.append((start_idx, end_idx))
 
-    # print("Индексы первого уровня:",first_level_chunks)
-
     # Second level: further split each part into chunks for each core
     chunks = []
     for start_idx, end_idx in first_level_chunks:
@@ -113,8 +106,6 @@ def generate_signal(signal, pulse_duration, fs):
             s_idx = start_idx + core_idx * second_level_chunk_size
             e_idx = start_idx + (core_idx + 1) * second_level_chunk_size if core_idx != num_cores - 1 else end_idx
             chunks.append((s_idx, e_idx, t_vect, a_vect, pulse_duration_in_samples, fs))
-
-    # print("Индексы второго уровня:",chunks)
 
     # Use multiprocessing Pool to process chunks in parallel
     with Pool(processes=num_cores) as pool:
@@ -129,7 +120,82 @@ def generate_signal(signal, pulse_duration, fs):
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(timestamp)
+    
+    # Визуализация сигнала
+    # visualize_signal(signal, fs)
+
     return signal
+
+def generate_signal_chunk(args):
+    """
+    Генерирует часть сигнала для заданного диапазона индексов.
+    """
+    start_idx, end_idx, t_vect, a_vect, pulse_duration_in_samples, fs = args
+    chunk_signal = np.zeros(end_idx - start_idx)
+
+    # Convert time vector to sample indices
+    indices1 = (t_vect * fs).astype(int)
+
+    print("\nОбработка части:")
+    print(f"Диапазон: [{start_idx}, {end_idx}]")
+    print("Индексы начала импульсов (в отсчетах):", indices1)
+    print("Время начала импульсов (в секундах):", t_vect)
+
+    for i in range(start_idx, end_idx):
+        idx_local = i - start_idx  # Локальный индекс внутри части
+        for j in range(len(indices1)):
+            # Rising edge
+            if indices1[j] <= i < indices1[j] + int(0.2 * pulse_duration_in_samples):
+                x1 = indices1[j]
+                y1 = 0
+                x2 = indices1[j] + int(0.2 * pulse_duration_in_samples)
+                y2 = a_vect[j]
+                slope = (y2 - y1) / (x2 - x1)
+                intercept = y1 - slope * x1
+                chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
+
+            # Falling edge
+            elif indices1[j] + int(0.8 * pulse_duration_in_samples) <= i < indices1[j] + pulse_duration_in_samples:
+                x1 = indices1[j] + 0.8 * pulse_duration_in_samples
+                y1 = a_vect[j]
+                x2 = indices1[j] + pulse_duration_in_samples
+                y2 = 0
+                slope = (y2 - y1) / (x2 - x1)
+                intercept = y1 - slope * x1
+                chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
+
+            # Steady state
+            elif indices1[j] + int(0.2 * pulse_duration_in_samples) <= i < indices1[j] + int(0.8 * pulse_duration_in_samples):
+                chunk_signal[idx_local] = a_vect[j] + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
+
+            elif chunk_signal[idx_local] != 0:
+                continue
+
+            # Noise outside pulses
+            else:
+                chunk_signal[idx_local] = random.uniform(-0.01, 0.01)
+
+    # Визуализация части сигнала
+    # visualize_chunk(chunk_signal, start_idx, end_idx, fs)
+
+    return start_idx, chunk_signal  # Возвращаем начальный индекс и часть сигнала
+
+def visualize_signal(signal, fs):
+    """
+    Визуализация сигнала с помощью matplotlib.
+    """
+    # Создаем массив времени для оси X
+    time_axis = np.arange(len(signal)) / fs
+
+    # Построение графика
+    plt.figure(figsize=(12, 6))
+    plt.plot(time_axis, signal, label="Сгенерированный сигнал", color="blue")
+    plt.title("Визуализация сигнала")
+    plt.xlabel("Время (секунды)")
+    plt.ylabel("Амплитуда")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
 
 def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
     num_samples = int(final_Len * fs)
@@ -201,7 +267,7 @@ if __name__ == "__main__":
     def adc_14bit(voltage):
         # Преобразование напряжения в код АЦП
         code = int((voltage + 1) * 8191)
-        return code
+        return code    
     
     dataG = embed_data(2,signalG,0,fs,-0.01,0.01)
 
@@ -210,3 +276,4 @@ if __name__ == "__main__":
     time_delta = datetime.timedelta(seconds=time_taken)
     print(f"Затраченное время: {time_delta}")
 
+    # visualize_signal(signalG, fs)

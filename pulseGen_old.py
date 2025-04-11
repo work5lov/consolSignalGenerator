@@ -3,6 +3,8 @@ import struct
 import random
 import datetime
 import time
+from tqdm import tqdm  # Импортируем tqdm для отображения прогресса
+import matplotlib.pyplot as plt  # Для визуализации
 
 def signal_Gen(fs, period, Amp, step):
     out = {}
@@ -20,9 +22,30 @@ def signal_Gen(fs, period, Amp, step):
     x_vect = [i * ((period * step) / step) * 100 for i in range(c)]
     for i in range(len(x_vect)):
         out[x_vect[i]] = y_vect[i]
+
+    visualize_signal_gen(time, signal, x_vect, y_vect)
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(timestamp)
     return out
+
+def visualize_signal_gen(time, signal, x_vect, y_vect):
+    """
+    Визуализация сигнала, сгенерированного функцией signal_Gen.
+    """
+    # Построение графика полного сигнала
+    plt.figure(figsize=(12, 6))
+    plt.plot(time, signal, label="Полный сигнал", color="blue")
+    
+    # Отметка выбранных точек
+    plt.scatter(x_vect, y_vect, color="red", label="Выбранные точки", zorder=5)
+    
+    plt.title("Визуализация сигнала из signal_Gen")
+    plt.xlabel("Время (секунды)")
+    plt.ylabel("Амплитуда")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
 
 def generate_signal(signal, pulse_duration, fs):
     t_vect = np.array([k for k in signal.keys()])
@@ -39,7 +62,7 @@ def generate_signal(signal, pulse_duration, fs):
     pulse_duration_in_samples = int(pulse_duration * fs)
 
     # Loop over each sample in the signal
-    for i in range(num_samples):
+    for i in tqdm(range(num_samples), desc="Прогресс генерации:", unit="samples"):
         # Loop over each pulse
         for j in range(len(indices1)):
             # Check if the sample is in the rising edge of the pulse
@@ -78,6 +101,23 @@ def generate_signal(signal, pulse_duration, fs):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(timestamp)
     return signal
+
+def visualize_signal(signal, fs):
+    """
+    Визуализация сигнала с помощью matplotlib.
+    """
+    # Создаем массив времени для оси X
+    time_axis = np.arange(len(signal)) / fs
+
+    # Построение графика
+    plt.figure(figsize=(12, 6))
+    plt.plot(time_axis, signal, label="Сгенерированный сигнал", color="blue")
+    plt.title("Визуализация сигнала")
+    plt.xlabel("Время (секунды)")
+    plt.ylabel("Амплитуда")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
 
 def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
     num_samples = int(final_Len * fs)     
@@ -133,12 +173,13 @@ fs = 50e6
 polez_signal = signal_Gen(fs,800e-6,1,10)
 print(polez_signal)
 signalG = generate_signal(polez_signal, 10*10e-6, fs)
+visualize_signal(signalG, fs)
 def adc_14bit(voltage):
     # Преобразование напряжения в код АЦП
     code = int((voltage + 1) * 8191)
     return code
 
-dataG = embed_data(5,signalG,1,fs,-0.01,0.01)
+# dataG = embed_data(5,signalG,1,fs,-0.01,0.01)
 
 # end_time = time.time()
 # time_taken = end_time - timestamp

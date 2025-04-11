@@ -4,7 +4,7 @@ import sys
 import struct
 from tqdm import tqdm
 
-def calculate_sample_indices(file_size, fs, num_channels=2, sample_fraction=0.01):
+def calculate_sample_indices(file_size, fs, num_channels=2, sample_fraction=0.1):
     """Вычисление индексов необходимых данных"""
     bytes_per_sample = 2 * num_channels
     total_samples = file_size // bytes_per_sample
@@ -55,7 +55,7 @@ def plot_signals(voltage_1, voltage_2, times, fs):
     plt.tight_layout()
     plt.show()
 
-def main(file_path, sample_fraction=0.01):
+def main(file_path, sample_fraction=0.1):
     FS = 50e6  # Частота дискретизации
     NUM_CHANNELS = 2  # Кол-во каналов
     
@@ -102,10 +102,10 @@ if __name__ == "__main__":
     #     sys.exit(1)
         
     # file_path = sys.argv[1]
-    # channel = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    # sample_fraction = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 
-    file_path = "signal_20250411_094308.bin"
-    sample_fraction=0.2
+    file_path = "build/Desktop_Qt_5_15_2_MinGW_32_bit-Debug/11-04-2025_14-32-17.bin"
+    sample_fraction=0.01
     
     try:
         main(file_path, sample_fraction)
