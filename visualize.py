@@ -104,7 +104,7 @@ if __name__ == "__main__":
     # file_path = sys.argv[1]
     # channel = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 
-    file_path = "signal_20250410_165032.bin"
+    file_path = "signal_20250411_094308.bin"
     sample_fraction=0.2
     
     try:

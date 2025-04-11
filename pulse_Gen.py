@@ -24,6 +24,7 @@ def signal_Gen(fs, period, Amp, step):
         out[x_vect[i]] = y_vect[i]
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(timestamp)
+    print("Отсчеты сигнала:", out)
     return out
 
 def generate_signal_chunk(args):
@@ -32,34 +33,35 @@ def generate_signal_chunk(args):
     """
     start_idx, end_idx, t_vect, a_vect, pulse_duration_in_samples, fs = args
     chunk_signal = np.zeros(end_idx - start_idx)
+
+    indices1 = (t_vect * fs).astype(int)    
     
     for i in range(start_idx, end_idx):
         idx_local = i - start_idx  # Локальный индекс внутри части
-        for j in range(len(t_vect)):
-            indices1 = int(t_vect[j] * fs)
-            
+        for j in range(len(indices1)):
+            # indices1 = int(t_vect[j] * fs)            
             # Rising edge
-            if indices1 <= i < int(indices1 + 0.2 * pulse_duration_in_samples):
-                x1 = indices1
+            if indices1[j] <= i < int(indices1[j] + 0.2 * pulse_duration_in_samples):
+                x1 = indices1[j]
                 y1 = 0
-                x2 = int(indices1 + 0.2 * pulse_duration_in_samples)
+                x2 = int(indices1[j] + 0.2 * pulse_duration_in_samples)
                 y2 = a_vect[j]
                 slope = (y2 - y1) / (x2 - x1)
                 intercept = y1 - slope * x1
                 chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
             
             # Falling edge
-            elif int(indices1 + 0.8 * pulse_duration_in_samples) <= i < int(indices1 + pulse_duration_in_samples):
-                x1 = indices1 + 0.8 * pulse_duration_in_samples
+            elif int(indices1[j] + 0.8 * pulse_duration_in_samples) <= i < int(indices1[j] + pulse_duration_in_samples):
+                x1 = indices1[j] + 0.8 * pulse_duration_in_samples
                 y1 = a_vect[j]
-                x2 = int(indices1 + pulse_duration_in_samples)
+                x2 = int(indices1[j] + pulse_duration_in_samples)
                 y2 = 0
                 slope = (y2 - y1) / (x2 - x1)
                 intercept = y1 - slope * x1
                 chunk_signal[idx_local] = slope * i + intercept + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
             
             # Steady state
-            elif int(indices1 + 0.2 * pulse_duration_in_samples) <= i < int(indices1 + 0.8 * pulse_duration_in_samples):
+            elif int(indices1[j] + 0.2 * pulse_duration_in_samples) <= i < int(indices1[j] + 0.8 * pulse_duration_in_samples):
                 chunk_signal[idx_local] = a_vect[j] + random.uniform(0.01 * a_vect[j], 0.02 * a_vect[j])
             
             # Noise outside pulses
@@ -74,13 +76,17 @@ def generate_signal(signal, pulse_duration, fs):
     Генерация сигнала с использованием нескольких процессов.
     """
     t_vect = np.array([k for k in signal.keys()])
-    a_vect = np.array([v for v in signal.values()])
+    a_vect = np.array([v for v in signal.values()])    
     
     # Calculate the length of the signal array
     num_samples = int((t_vect[-1] + pulse_duration) * fs)
 
     # Calculate the duration of the pulse in samples
     pulse_duration_in_samples = int(pulse_duration * fs)
+    # print("Длительность импульса в отсчетах:", pulse_duration_in_samples)
+
+    indices1 = (t_vect * fs).astype(int)
+    print("Индексы:",indices1)
 
     print("Генерация сигнала...")
 
@@ -97,6 +103,8 @@ def generate_signal(signal, pulse_duration, fs):
         end_idx = (part_idx + 1) * first_level_chunk_size if part_idx != first_level_parts - 1 else num_samples
         first_level_chunks.append((start_idx, end_idx))
 
+    # print("Индексы первого уровня:",first_level_chunks)
+
     # Second level: further split each part into chunks for each core
     chunks = []
     for start_idx, end_idx in first_level_chunks:
@@ -105,6 +113,8 @@ def generate_signal(signal, pulse_duration, fs):
             s_idx = start_idx + core_idx * second_level_chunk_size
             e_idx = start_idx + (core_idx + 1) * second_level_chunk_size if core_idx != num_cores - 1 else end_idx
             chunks.append((s_idx, e_idx, t_vect, a_vect, pulse_duration_in_samples, fs))
+
+    # print("Индексы второго уровня:",chunks)
 
     # Use multiprocessing Pool to process chunks in parallel
     with Pool(processes=num_cores) as pool:
@@ -122,17 +132,22 @@ def generate_signal(signal, pulse_duration, fs):
     return signal
 
 def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
-    num_samples = int(final_Len * fs)     
+    num_samples = int(final_Len * fs)
+    print("Итоговое число отсчетов:",num_samples)
     start_sample = int(start_time * fs)
     end_sample = start_sample + len(signal)
+    print("Первый отсчет:",start_sample)
+    print("Последний отсчет:",end_sample)
     final_signal = np.zeros(num_samples)
     prefix = "signal_P"    
     suffix = "S.bin"
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     fileName = f"signal_{timestamp}.bin"
-    print(f"\n{fileName}")
+    print(f"\nЗапись в файл: {fileName}")
+    
     with open(fileName, 'wb') as f:    
-        for i in range(num_samples):
+        # Оборачиваем цикл записи в tqdm для отображения прогресса
+        for i in tqdm(range(num_samples), desc="Прогресс записи", unit="samples"):
             if start_sample <= i < end_sample:
                 final_signal[i] = signal[i - start_sample]
                 codes = adc_14bit(final_signal[i])
@@ -145,9 +160,9 @@ def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
                 f.write(struct.pack('H', codes))
                 f.write(struct.pack('H', codes))
                 f.flush()
-    f.close()
+    
     print("Готово!")
-    return final_signal    
+    return final_signal   
 
 def embed_data2(final_Len, signal, start_time, fs, lowRand, highRand):
     num_samples = int(final_Len * fs)     
@@ -173,8 +188,10 @@ if __name__ == "__main__":
 
     # Параметры сигнала
     r_Time_start = random.uniform(0, 30)
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # print(timestamp)
+    # Записываем время начала выполнения программы
+    start_timestamp = datetime.datetime.now()  # Для вывода времени начала
+    timestamp = time()  # Для вычисления затраченного времени
+    print(f"Начало выполнения: {start_timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
     # Частота дискретизации
     fs = 50e6
 
@@ -191,5 +208,5 @@ if __name__ == "__main__":
     end_time = time()
     time_taken = end_time - timestamp
     time_delta = datetime.timedelta(seconds=time_taken)
-    print(f"Time taken: {time_delta}")
+    print(f"Затраченное время: {time_delta}")
 
