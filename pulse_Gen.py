@@ -29,42 +29,6 @@ def signal_Gen(fs, period, Amp, step):
     print("Отсчеты сигнала:", out)
     return out
 
-def visualize_signal_gen(time, signal, x_vect, y_vect):
-    """
-    Визуализация сигнала, сгенерированного функцией signal_Gen.
-    """
-    # Построение графика полного сигнала
-    plt.figure(figsize=(12, 6))
-    plt.plot(time, signal, label="Полный сигнал", color="blue")
-    
-    # Отметка выбранных точек
-    plt.scatter(x_vect, y_vect, color="red", label="Выбранные точки", zorder=5)
-    
-    plt.title("Визуализация сигнала из signal_Gen")
-    plt.xlabel("Время (секунды)")
-    plt.ylabel("Амплитуда")
-    plt.grid(True)
-    plt.legend()
-    plt.show()
-
-def visualize_chunk(chunk_signal, start_idx, end_idx, fs):
-    """
-    Визуализация части сигнала.
-    """
-    # Создаем массив времени для оси X
-    time_axis = np.arange(start_idx, end_idx) / fs
-
-    # Построение графика
-    plt.figure(figsize=(12, 6))
-    plt.plot(time_axis, chunk_signal, label="Часть сигнала", color="blue")
-    plt.title(f"Визуализация части сигнала [{start_idx}, {end_idx}]")
-    plt.xlabel("Время (секунды)")
-    plt.ylabel("Амплитуда")
-    plt.grid(True)
-    plt.legend()
-    plt.show()
-
-
 def generate_signal(signal, pulse_duration, fs):
     """
     Генерация сигнала с использованием нескольких процессов.
@@ -90,7 +54,7 @@ def generate_signal(signal, pulse_duration, fs):
     print(f"Используется {num_cores} ядер процессора.")
 
     # First level: split data into 10 parts
-    first_level_parts = 10
+    first_level_parts = 100
     first_level_chunk_size = num_samples // first_level_parts
     first_level_chunks = []
     for part_idx in range(first_level_parts):
@@ -111,8 +75,12 @@ def generate_signal(signal, pulse_duration, fs):
     with Pool(processes=num_cores) as pool:
         results = list(tqdm(pool.imap_unordered(generate_signal_chunk, chunks), total=len(chunks), desc="Прогресс генерации"))
 
+     # Разделяем индексы и данные
+    results.sort(key=lambda x: x[0])  # Сортируем по start_idx
+    signal_parts = [part[1] for part in results]  # Извлекаем только chunk_signal
+
     # Combine all chunks into the final signal
-    signal = np.concatenate(results)
+    signal = np.concatenate(signal_parts)
 
     # Print the first and last elements of the generated signal
     print(f"Первый элемент сигнала: {signal[0]}")
@@ -120,9 +88,6 @@ def generate_signal(signal, pulse_duration, fs):
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(timestamp)
-    
-    # Визуализация сигнала
-    # visualize_signal(signal, fs)
 
     return signal
 
@@ -135,11 +100,6 @@ def generate_signal_chunk(args):
 
     # Convert time vector to sample indices
     indices1 = (t_vect * fs).astype(int)
-
-    print("\nОбработка части:")
-    print(f"Диапазон: [{start_idx}, {end_idx}]")
-    print("Индексы начала импульсов (в отсчетах):", indices1)
-    print("Время начала импульсов (в секундах):", t_vect)
 
     for i in range(start_idx, end_idx):
         idx_local = i - start_idx  # Локальный индекс внутри части
@@ -175,9 +135,6 @@ def generate_signal_chunk(args):
             else:
                 chunk_signal[idx_local] = random.uniform(-0.01, 0.01)
 
-    # Визуализация части сигнала
-    # visualize_chunk(chunk_signal, start_idx, end_idx, fs)
-
     return start_idx, chunk_signal  # Возвращаем начальный индекс и часть сигнала
 
 def visualize_signal(signal, fs):
@@ -211,41 +168,34 @@ def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
     fileName = f"signal_{timestamp}.bin"
     print(f"\nЗапись в файл: {fileName}")
     
-    with open(fileName, 'wb') as f:    
-        # Оборачиваем цикл записи в tqdm для отображения прогресса
-        for i in tqdm(range(num_samples), desc="Прогресс записи", unit="samples"):
+    # Создаем массив для хранения кодов АЦП
+    data_buffer = bytearray()
+
+    # Генерация данных с прогрессом
+    with tqdm(total=num_samples, desc="Генерация данных для записи", unit="samples") as pbar:
+        for i in range(num_samples):
             if start_sample <= i < end_sample:
-                final_signal[i] = signal[i - start_sample]
-                codes = adc_14bit(final_signal[i])
-                f.write(struct.pack('H', codes))
-                f.write(struct.pack('H', codes))
-                f.flush()
+                value = signal[i - start_sample]
             else:
-                final_signal[i] = random.uniform(lowRand, highRand)
-                codes = adc_14bit(final_signal[i])
-                f.write(struct.pack('H', codes))
-                f.write(struct.pack('H', codes))
-                f.flush()
-    
+                value = random.uniform(lowRand, highRand)
+            
+            # Преобразуем значение в код АЦП и добавляем в буфер
+            code = adc_14bit(value)
+            data_buffer.extend(struct.pack('H', code))  # Добавляем 2 байта (uint16)
+            data_buffer.extend(struct.pack('H', code))  # Дублируем код
+
+            # Обновляем прогресс-бар
+            pbar.update(1)
+
+    # Записываем все данные в файл одной операцией
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    fileName = f"signal_{timestamp}.bin"
+    print(f"Запись в файл: {fileName}")
+    with open(fileName, 'wb') as f:
+        f.write(data_buffer)
+
     print("Готово!")
-    return final_signal   
-
-def embed_data2(final_Len, signal, start_time, fs, lowRand, highRand):
-    num_samples = int(final_Len * fs)     
-    start_sample = int(start_time * fs)
-    end_sample = start_sample + len(signal)
-    final_signal = np.zeros(num_samples)
- 
-    for i in range(num_samples):
-        if start_sample <= i < end_sample:
-            final_signal[i] = signal[i - start_sample]
-            codes = adc_14bit(final_signal[i])
-
-        else:
-            final_signal[i] = random.uniform(lowRand, highRand)
-            codes = adc_14bit(final_signal[i])
-
-    return final_signal   
+    return np.frombuffer(data_buffer, dtype=np.uint16)  # Возвращаем массив данных
 
 if __name__ == "__main__":
     # Защита от рекурсивного запуска процессов
@@ -262,7 +212,6 @@ if __name__ == "__main__":
     fs = 50e6
 
     polez_signal = signal_Gen(fs,800e-6,1,10)
-    # print(polez_signal)
     signalG = generate_signal(polez_signal, 10*10e-6, fs)
     def adc_14bit(voltage):
         # Преобразование напряжения в код АЦП
