@@ -6,6 +6,7 @@ from multiprocessing import Pool, cpu_count
 from time import time
 from tqdm import tqdm  # Импортируем tqdm для отображения прогресса
 import matplotlib.pyplot as plt  # Для визуализации
+import mmap
 
 def signal_Gen(fs, period, Amp, step):
     out = {}
@@ -156,22 +157,13 @@ def visualize_signal(signal, fs):
 
 def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
     num_samples = int(final_Len * fs)
-    print("Итоговое число отсчетов:",num_samples)
     start_sample = int(start_time * fs)
     end_sample = start_sample + len(signal)
-    print("Первый отсчет:",start_sample)
-    print("Последний отсчет:",end_sample)
-    final_signal = np.zeros(num_samples)
-    prefix = "signal_P"    
-    suffix = "S.bin"
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    fileName = f"signal_{timestamp}.bin"
-    print(f"\nЗапись в файл: {fileName}")
-    
+
     # Создаем массив для хранения кодов АЦП
     data_buffer = bytearray()
 
-    # Генерация данных с прогрессом
+    # Генерация данных
     with tqdm(total=num_samples, desc="Генерация данных для записи", unit="samples") as pbar:
         for i in range(num_samples):
             if start_sample <= i < end_sample:
@@ -187,12 +179,18 @@ def embed_data(final_Len, signal, start_time, fs, lowRand, highRand):
             # Обновляем прогресс-бар
             pbar.update(1)
 
-    # Записываем все данные в файл одной операцией
+    # Записываем данные в файл с использованием mmap
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     fileName = f"signal_{timestamp}.bin"
-    print(f"Запись в файл: {fileName}")
-    with open(fileName, 'wb') as f:
-        f.write(data_buffer)
+    with open(fileName, 'wb+') as f:
+        # Задаем размер файла
+        f.write(b'\x00' * len(data_buffer))  # Заполняем файл нулями
+        f.seek(0)  # Возвращаемся в начало файла
+
+        # Создаем mmap для записи
+        mmapped_file = mmap.mmap(f.fileno(), length=len(data_buffer), access=mmap.ACCESS_WRITE)
+        mmapped_file.write(data_buffer)
+        mmapped_file.close()
 
     print("Готово!")
     return np.frombuffer(data_buffer, dtype=np.uint16)  # Возвращаем массив данных
@@ -218,7 +216,7 @@ if __name__ == "__main__":
         code = int((voltage + 1) * 8191)
         return code    
     
-    dataG = embed_data(2,signalG,0,fs,-0.01,0.01)
+    dataG = embed_data(30,signalG,0,fs,-0.01,0.01)
 
     end_time = time()
     time_taken = end_time - timestamp
