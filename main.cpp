@@ -30,7 +30,7 @@ string generateFileName() {
 
     // Форматируем имя файла
     ostringstream fileName;
-    fileName << put_time(&localTime, "%d-%m-%Y_%H-%M-%S");
+    fileName << put_time(&localTime, "%Y%m%d_%H%M%S");
     return fileName.str();
 }
 
@@ -234,7 +234,7 @@ void embed_data(double final_Len, const vector<double>& signal, double start_tim
     int end_sample = start_sample + signal.size();
 
     string fileDate = generateFileName();
-    string filename  = fileDate + ".bin";
+    string filename  = "signal_" + fileDate + ".bin";
 
     cout << fileDate << endl;
 

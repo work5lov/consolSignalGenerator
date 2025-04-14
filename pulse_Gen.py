@@ -7,6 +7,7 @@ from time import time
 from tqdm import tqdm  # Импортируем tqdm для отображения прогресса
 import matplotlib.pyplot as plt  # Для визуализации
 import mmap
+import argparse  # Для обработки аргументов командной строки
 
 def signal_Gen(fs, period, Amp, step):
     out = {}
@@ -200,23 +201,34 @@ if __name__ == "__main__":
     from multiprocessing import freeze_support
     freeze_support()
 
+    # Парсер аргументов командной строки
+    parser = argparse.ArgumentParser(description="Консольный генератор сигналов.")
+    parser.add_argument("total_time", type=float, nargs='?', default=2.0, help="Общее время сигнала (в секундах)")
+    parser.add_argument("signal_start", type=float, nargs='?', default=0.0, help="Время начала сигнала (в секундах)")
+    parser.add_argument("amplitude", type=float, nargs='?', default=1.0, help="Амплитуда сигнала")
+    parser.add_argument("frequency", type=float, nargs='?', default=50e6, help="Частота дискретизации (в Гц)")
+
+    args = parser.parse_args()
+
     # Параметры сигнала
-    r_Time_start = random.uniform(0, 30)
     # Записываем время начала выполнения программы
     start_timestamp = datetime.datetime.now()  # Для вывода времени начала
     timestamp = time()  # Для вычисления затраченного времени
     print(f"Начало выполнения: {start_timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-    # Частота дискретизации
-    fs = 50e6
+    # Параметры сигнала
+    total_time = args.total_time
+    signal_start = args.signal_start
+    amplitude = args.amplitude
+    fs = args.frequency
 
-    polez_signal = signal_Gen(fs,800e-6,1,10)
+    polez_signal = signal_Gen(fs,800e-6,amplitude,10)
     signalG = generate_signal(polez_signal, 10*10e-6, fs)
     def adc_14bit(voltage):
         # Преобразование напряжения в код АЦП
         code = int((voltage + 1) * 8191)
         return code    
     
-    dataG = embed_data(30,signalG,0,fs,-0.01,0.01)
+    dataG = embed_data(total_time,signalG,signal_start,fs,-0.01,0.01)
 
     end_time = time()
     time_taken = end_time - timestamp
