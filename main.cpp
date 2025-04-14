@@ -124,6 +124,8 @@ vector<pair<double, double>> signal_Gen(double fs, double period, double Amp, in
         out.emplace_back(x_vect[i], y_vect[i]);
     }
 
+    cout << "The signal peaks have been generated!" << endl;
+
     return out;
 }
 
@@ -220,6 +222,8 @@ vector<double> generate_signal(const vector<pair<double, double>>& signal, doubl
         }        
     }
 
+    cout << "A useful signal has been generated!" << endl;
+
     return final_signal;
 }
 
@@ -253,7 +257,7 @@ void embed_data(double final_Len, const vector<double>& signal, double start_tim
 
 int main(int argc, char* argv[]) {
     // Значения по умолчанию
-    double total_time = 2.0;
+    double total_time = 3.0;
     double signal_start = 0.0;
 
     // Проверяем наличие аргументов командной строки
@@ -287,10 +291,6 @@ int main(int argc, char* argv[]) {
 
     // const double total_time = 5.0;
     const double fs_p = 50e6;
-    const int total_elements = static_cast<int>(total_time * fs_p);  // Общее количество элементов
-    const int num_threads = 5;  // Количество потоков
-    const double elements_per_iteration = total_elements * 0.01;  // Элементов за итерацию
-    const double elements_per_thread = elements_per_iteration / num_threads;  // Количество элементов на поток
     const int bar_width = 20;  // Ширина прогресс-бара
 
     const double pulse_duartion = 10*10e-6;
@@ -317,7 +317,17 @@ int main(int argc, char* argv[]) {
     auto end = chrono::high_resolution_clock::now();
     chrono::duration<double> elapsed = end - start;
 
-    cout << "Elapsed time: " << elapsed.count() << " secounds" << endl;
+    // Вычисляем минуты и секунды
+    int total_seconds = static_cast<int>(elapsed.count()); // Получаем общее количество секунд
+    int minutes = total_seconds / 60;                      // Вычисляем минуты
+    int seconds = total_seconds % 60;                      // Вычисляем оставшиеся секунды
+
+    // Выводим результат
+    if (minutes > 0) {
+        std::cout << "Elapsed time: " << minutes << " minute(s) and " << seconds << " second(s)" << std::endl;
+    } else {
+        std::cout << "Elapsed time: " << seconds << " second(s)" << std::endl;
+    }
 
     return 0;
 }
