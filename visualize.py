@@ -97,16 +97,24 @@ def main(file_path, sample_fraction=0.1):
         print(f"Ошибка: {str(e)}")
 
 if __name__ == "__main__":
-    # if len(sys.argv) < 2:
-    #     print("Использование: python visualize.py <файл> [канал=0]")
-    #     sys.exit(1)
-        
-    # file_path = sys.argv[1]
-    # sample_fraction = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-
-    # file_path = "build/Desktop_Qt_5_15_2_MinGW_32_bit-Debug/11-04-2025_14-32-17.bin"
-    file_path = "signal_20250414_142644.bin"
-    sample_fraction=0.01
+    # Парсер аргументов командной строки
+    if len(sys.argv) < 2:
+        print("Использование: python visualize.py <файл> [коэффициент прореживания]")
+        print("  <файл>: Путь к файлу данных")
+        print("  [коэффициент прореживания]: Доля данных для чтения (по умолчанию 0.1)")
+        sys.exit(1)
+    
+    file_path = sys.argv[1]
+    sample_fraction = 0.1  # Значение по умолчанию
+    
+    if len(sys.argv) > 2:
+        try:
+            sample_fraction = float(sys.argv[2])
+            if sample_fraction <= 0 or sample_fraction > 1:
+                raise ValueError("Коэффициент прореживания должен быть в диапазоне (0, 1].")
+        except ValueError as e:
+            print(f"Ошибка: Неверный формат коэффициента прореживания. {str(e)}")
+            sys.exit(1)
     
     try:
         main(file_path, sample_fraction)
