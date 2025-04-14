@@ -100,9 +100,9 @@ pip install -r requirements.txt
 | **Производительность**         | Медленнее из-за интерпретации                   | Быстрее благодаря компиляции                   |
 | **Визуализация**               | Поддерживается через `matplotlib`               | Не поддерживается                              |
 
-Дополнительно возможно использовать скрипт `visualize.py` для визуализации:
+    Дополнительно возможно использовать скрипт `visualize.py` для визуализации:
     ```bash
-        python visualize.py path/to/bin/file sample_fraction
+    python visualize.py path/to/bin/file sample_fraction
     ```
 
 ---
