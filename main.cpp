@@ -15,240 +15,6 @@ using namespace chrono;
 // Общий мьютекс для синхронизации вывода
 mutex mtx;
 
-/*void signal_Gen(double fs,
-                double period,
-                double Amp,
-                int step,
-                vector<double>& x_vect,
-                vector<double>& y_vect) {
-    double end_time_sec = (period * step) / 2;
-    double start_time_sec = 0;
-    double f = 1 / (period * step);
-    int num_samples = static_cast<int>(round((end_time_sec - start_time_sec) * fs));
-
-    vector<double> time(num_samples);
-    for (int i = 0; i < num_samples; ++i) {
-        time[i] = start_time_sec + i / fs;
-    }
-
-    vector<double> signal(num_samples);
-    for (int i = 0; i < num_samples; ++i) {
-        signal[i] = Amp * sin(2 * M_PI * f * time[i]);
-    }
-
-    double per = (period * step) / (step * 2 + 1);
-    vector<int> indices;
-    for (int i = 0; i < num_samples; i += static_cast<int>(round(per * fs))) {
-        indices.push_back(i);
-    }
-
-    vector<double> signal_selected;
-    for (int i : indices) {
-        if (i < num_samples) {
-            signal_selected.push_back(signal[i]);
-        }
-    }
-
-    int c = step + 1;
-    y_vect = vector<double>(signal_selected.begin(), signal_selected.begin() + c);
-    x_vect.resize(c); // Убедимся, что размер вектора x_vect соответствует y_vect
-    for (int i = 0; i < c; ++i) {
-        x_vect[i] = (i * ((period * step) / step) * 100) * fs;
-    }
-}
-
-// Функция для заполнения части вектора
-void fill_vector_partO(vector<double>& iteration_vec,
-                      int global_start,
-                      int local_start,
-                      int count,
-                      double fs) {
-    for (int i = 0; i < count; ++i) {
-        iteration_vec[local_start + i] = static_cast<double>(global_start + i) / fs;
-    }
-}
-
-void fill_vector_part(vector<double>& iteration_vec,
-                      vector<double>& x_vect,
-                      vector<double>& y_vect,
-                      int global_start,
-                      int local_start,
-                      int count,
-                      double pulse_duartion_in_samples)
-{
-    // Генератор случайных чисел
-    random_device rd; // Получаем случайное начальное значение
-    mt19937 gen(rd()); // Инициализация генератора
-    uniform_real_distribution<double> dis(-0.01, 0.01); // Распределение для генерации шума
-    for (int i = 0; i < count; ++i) {
-        for(int j = 0; j < x_vect.size(); ++j){
-            if (x_vect[j] <= global_start + local_start + i && global_start + local_start + i < x_vect[j] + 0.2 * pulse_duartion_in_samples) {
-                uint64_t x1 = x_vect[j];
-                double y1 = 0;
-                uint64_t x2 = x_vect[j] + 0.2 * pulse_duartion_in_samples;
-                double y2 = y_vect[j];
-                double slope = (y2 - y1) / (x2 - x1);
-                double intercept = y1 - slope * x1;
-                iteration_vec[local_start + i] = slope * i + intercept + dis(gen);
-                // cout << "rising" << endl;
-            }
-            else if(x_vect[j]+0.8*pulse_duartion_in_samples <= global_start + local_start + i < x_vect[j]+pulse_duartion_in_samples){
-                uint64_t x1 = x_vect[j]+0.8*pulse_duartion_in_samples;
-                double y1 = y_vect[j];
-                uint64_t x2 = x_vect[j]+pulse_duartion_in_samples;
-                double y2 = 0;
-                double slope = (y2 - y1) / (x2 - x1);
-                double intercept = y1 - slope * x1;
-                iteration_vec[local_start + i] = slope * i + intercept + dis(gen);
-                // cout << "falling" << endl;
-            }
-            else if(x_vect[j]+0.2*pulse_duartion_in_samples <= global_start + local_start + i < x_vect[j]+0.8*pulse_duartion_in_samples){
-                iteration_vec[local_start + i] = y_vect[j] + dis(gen);
-                // cout << "pulse" << endl;
-            }
-            // else if()
-            else {
-                iteration_vec[local_start + i] = dis(gen);
-            }
-        }
-    }
-}
-
-void generate_signal(vector<double>& signal, const vector<double>& t_vect, const vector<double>& a_vect, int pulse_duration_in_samples, int global_start_index, int local_start_index, int elements_per_thread) {
-    // Инициализация генератора случайных чисел
-    random_device rd;
-    mt19937 gen(rd());
-    uniform_real_distribution<> noise(-0.01, 0.01);
-
-    // Вычисление индексов начала импульсов
-    vector<int> indices1(t_vect.size());
-    for (size_t i = 0; i < t_vect.size(); ++i) {
-        indices1[i] = static_cast<int>(t_vect[i]);
-    }
-
-    // Цикл по элементам текущего потока
-    for (int i = local_start_index; i < local_start_index + elements_per_thread; ++i) {
-        int global_index = global_start_index + i;
-
-        // Цикл по каждому импульсу
-        for (size_t j = 0; j < indices1.size(); ++j) {
-            if (indices1[j] <= global_index && global_index < indices1[j] + pulse_duration_in_samples) {
-                if (global_index < indices1[j] + 0.2 * pulse_duration_in_samples) {
-                    // Расчет наклона и пересечения для фронта импульса
-                    double x1 = indices1[j];
-                    double y1 = 0;
-                    double x2 = indices1[j] + 0.2 * pulse_duration_in_samples;
-                    double y2 = a_vect[j];
-                    double slope = (y2 - y1) / (x2 - x1);
-                    double intercept = y1 - slope * x1;
-                    signal[i] = slope * global_index + intercept + noise(gen);
-                } else if (global_index >= indices1[j] + 0.8 * pulse_duration_in_samples) {
-                    // Расчет наклона и пересечения для спада импульса
-                    double x1 = indices1[j] + 0.8 * pulse_duration_in_samples;
-                    double y1 = a_vect[j];
-                    double x2 = indices1[j] + pulse_duration_in_samples;
-                    double y2 = 0;
-                    double slope = (y2 - y1) / (x2 - x1);
-                    double intercept = y1 - slope * x1;
-                    signal[i] = slope * global_index + intercept + noise(gen);
-                } else {
-                    // Установить значение сигнала на амплитуду импульса
-                    signal[i] = a_vect[j] + noise(gen);
-                }
-            } else if (signal[i] != 0) {
-                continue;
-            } else {
-                signal[i] = noise(gen);
-            }
-        }
-    }
-}
-
-// Функция для умножения части вектора на 4 с учетом диапазона и генерации шума
-void multiply_vector_part(vector<double>& iteration_vec,
-                          int local_start,
-                          int count,
-                          double signal_start,
-                          double signal_end,
-                          double fs) {
-    // Генератор случайных чисел
-    random_device rd; // Получаем случайное начальное значение
-    mt19937 gen(rd()); // Инициализация генератора
-    uniform_real_distribution<double> dis(-0.01, 0.01); // Распределение для генерации шума
-
-    for (int i = 0; i < count; ++i) {
-        // Получаем текущее значение
-        double value = iteration_vec[local_start + i];
-//        iteration_vec[local_start + i] *= 1;
-        // Умножаем на 1000, если значение находится в заданном диапазоне
-        if (value >= signal_start && value <= signal_end) {
-//            cout << "Generating sinusoid at time: " << value << " " << iteration_vec[0] << iteration_vec [count] << endl;
-//            iteration_vec[local_start + i] = 1 * sin(2 * M_PI * 1000 * value); // Умножаем на 1000
-            iteration_vec[local_start + i] = 1;
-        } else {
-            iteration_vec[local_start + i] = dis(gen); // Добавляем шум
-        }
-    }
-}
-
-// Функция для преобразования напряжения в код АЦП
-int adc_14bit(double voltage) {
-    return static_cast<int>((voltage + 1) * 8191);
-}
-
-// Функция для встраивания данных в сигнал
-// void embed_data2(vector<double>& final_signal, const vector<double>& signal, double start_sample, double end_sample, double lowRand, double highRand, int global_start_index, int local_start_index, int elements_per_thread) {
-//     // Инициализация генератора случайных чисел
-//     random_device rd;
-//     mt19937 gen(rd());
-//     uniform_real_distribution<> rand_dist(lowRand, highRand);
-
-//     // Цикл по элементам текущего потока
-//     for (int i = local_start_index; i < local_start_index + elements_per_thread; ++i) {
-//         int global_index = global_start_index + i;
-
-//         if (start_sample <= global_index && global_index < end_sample) {
-//             // Встраиваем сигнал
-//             final_signal[i] = signal[global_index - start_sample];
-//             // adc_14bit(final_signal[i]); // Вызов функции adc_14bit
-//         } else {
-//             // Генерируем случайное значение
-//             final_signal[i] = rand_dist(gen);
-//             // adc_14bit(final_signal[i]); // Вызов функции adc_14bit
-//         }
-//     }
-// }
-
-void writeToFileLE(ofstream& file,
-                   size_t num_samples,
-                   const vector<double>& signal_vect) {
-    const int blockSize = 1024;
-
-    for (size_t i = 0; i < num_samples; i += blockSize) {
-        size_t block_end = min(i + blockSize, num_samples);
-        for (size_t j = i; j < block_end; ++j) {
-            // Преобразуем значение в int16_t и кодируем в Little Endian
-            int16_t value = static_cast<int16_t>(round((signal_vect[j] + 1) * 8191));
-
-            // Переставляем байты для Little Endian
-            uint8_t bytes[2];
-            bytes[0] = static_cast<uint8_t>(value & 0xFF);        // Младший байт
-            bytes[1] = static_cast<uint8_t>((value >> 8) & 0xFF);  // Старший байт
-
-            // Записываем байты в файл дважды (16-битный формат)
-            file.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
-            file.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));  // Дублируем для стерео/двухканальной записи
-            // file.flush();
-        }        
-    }
-}
-
-void set_new_indeces(vector<double>& x_vect, double pulse_duartion_in_samples) {
-    for (int i = 0; i < x_vect.size(); ++i) {
-        x_vect[i] = x_vect[i] + pulse_duartion_in_samples;
-    }
-}*/
-
 string generateFileName() {
     // Получаем текущее время
     auto now = chrono::system_clock::now();
@@ -269,6 +35,13 @@ string generateFileName() {
 }
 
 void show_progress_percentage(const time_point<steady_clock>& start_time, int current, int total) {
+    lock_guard<mutex> lock(mtx); // Блокируем мьютекс
+
+    if (total <= 0 || current < 0) {
+        cerr << "Ошибка: некорректные параметры для отображения прогресса." << endl;
+        return;
+    }
+
     auto current_time = steady_clock::now();
     chrono::duration<double> elapsed_time = current_time - start_time;
     int minutes = static_cast<int>(elapsed_time.count()) / 60;
@@ -296,6 +69,7 @@ void show_progress_percentage(const time_point<steady_clock>& start_time, int cu
     // Форматируем вывод прогресс-бара
     cout << " [" << bar << "] " << fixed << setprecision(1) << (progress * 100) << "% "
          << "(" << minutes << "m " << seconds << "s)" << "\r"; // Отображение процента и времени
+    cout.flush();
 }
 
 // Функция для генерации случайного числа в диапазоне
@@ -356,7 +130,7 @@ vector<pair<double, double>> signal_Gen(double fs, double period, double Amp, in
 // Обработка части сигнала
 vector<double> generate_signal_chunk(int start_idx, int end_idx, const vector<double>& t_vect, const vector<double>& a_vect,
                                      int pulse_duration_in_samples, double fs) {
-    vector<double> chunk_signal(end_idx - start_idx);
+    vector<double> chunk_signal(end_idx - start_idx, 0.0);
     vector<int> indices1(t_vect.size());
 
     for (size_t i = 0; i < t_vect.size(); ++i) {
@@ -365,6 +139,12 @@ vector<double> generate_signal_chunk(int start_idx, int end_idx, const vector<do
 
     for (int i = start_idx; i < end_idx; ++i) {
         int idx_local = i - start_idx;
+
+        if (idx_local < 0 || idx_local >= chunk_signal.size()) {
+            cerr << "Ошибка: Выход за границы массива chunk_signal. idx_local = " << idx_local << endl;
+            continue;
+        }
+
         for (size_t j = 0; j < indices1.size(); ++j) {
             // Rising edge
             if (indices1[j] <= i && i < indices1[j] + static_cast<int>(0.2 * pulse_duration_in_samples)) {
@@ -437,8 +217,7 @@ vector<double> generate_signal(const vector<pair<double, double>>& signal, doubl
         int end_idx = (i == num_threads - 1) ? num_samples : start_idx + chunk_size;
         for (int j = start_idx; j < end_idx; ++j) {
             final_signal[j] = results[i][j - start_idx];
-        }
-        // show_progress_percentage(start_time, i, num_threads);
+        }        
     }
 
     return final_signal;
@@ -465,8 +244,7 @@ void embed_data(double final_Len, const vector<double>& signal, double start_tim
         double value = (start_sample <= i && i < end_sample) ? signal[i - start_sample] : random_uniform(lowRand, highRand);
         uint16_t code = adc_14bit(value);
         file.write(reinterpret_cast<const char*>(&code), sizeof(uint16_t));
-        file.write(reinterpret_cast<const char*>(&code), sizeof(uint16_t));
-        // show_progress_percentage(start_time_progress, i, num_samples);
+        file.write(reinterpret_cast<const char*>(&code), sizeof(uint16_t));        
     }
 
     file.close();
